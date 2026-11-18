@@ -311,7 +311,7 @@ async function pump(src, dest) {
 // Cloudflare Workers AI. Waits for the whole answer and returns it as plain text.
 // Different models return different shapes, so the text is picked out tolerantly.
 async function formatWorkersAI(prompt, env, cors) {
-  const model = env.AI_MODEL || "@cf/google/gemma-4-26b-a4b-it";
+  const model = env.AI_MODEL || "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
   let out;
   try {
     out = await env.AI.run(model, {
@@ -327,7 +327,15 @@ async function formatWorkersAI(prompt, env, cors) {
     return json({ ok: false, code: "server", error: "The AI model failed. Try again, or pick another AI_MODEL (see the README)." }, 502, cors);
   }
   const text = pickText(out);
-  if (!text) return json({ ok: false, code: "server", error: "The AI model returned nothing. Try again." }, 502, cors);
+  if (!text) {
+    const choice = out && out.choices && out.choices[0];
+    const finish = (choice && choice.finish_reason) || "";
+    console.log("Workers AI returned no answer", model, finish, JSON.stringify(out).slice(0, 600));
+    const error = finish === "length"
+      ? "The AI model ran out of room before it wrote an answer (reasoning models spend it on thinking). Set AI_MODEL to a non-reasoning model such as @cf/meta/llama-3.3-70b-instruct-fp8-fast (see the README), or shorten the paper."
+      : "The AI model returned nothing. Try again, or switch AI_MODEL (see the README).";
+    return json({ ok: false, code: "empty", error }, 502, cors);
+  }
   return new Response(text, { headers: { ...cors, "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
 }
 
