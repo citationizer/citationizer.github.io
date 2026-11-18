@@ -6,8 +6,10 @@ compatibility_date = "2025-06-01"
 # Your GitHub Pages address (origin only, no path). Several can be listed, separated by commas,
 # for example "https://citationizer.github.io,http://localhost:3000".
 ALLOWED_ORIGIN = "https://citationizer.github.io"
-# Free Cloudflare Workers AI model. Swap for another text model from the Workers AI catalog.
-AI_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+# Cloudflare Workers AI model. This one does not "think" before answering, so it is fast. Its context
+# window is 24,000 tokens, so very long papers plus sources may not fit. Reasoning models
+# (Gemma 4, GLM, gpt-oss) can run out of tokens thinking and return nothing.
+AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 AI_MAX_TOKENS = "8000"
 # Visitor limits, counted per IP address: USE_LIMIT formats per WINDOW_HOURS hours,
 # and FETCH_LIMIT page fetches in the same window.
