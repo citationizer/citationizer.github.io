@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Citationizer</title>
+<meta name="description" content="Format a paper and its citations in MLA or APA, with in-text credits and a reference list.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: Steam-style store page. Dark slate top bar, hero with tags, two columns: inputs left, live paper right. */
+:root {
+  --bg: #1b2838;
+  --bar: #171a21;
+  --surface: rgba(0, 0, 0, 0.22);
+  --raised: #2a475e;
+  --line: #32475b;
+  --fg: #c7d5e0;
+  --head: #ffffff;
+  --muted: #8f98a0;
+  --blue: #66c0f4;
+  --tag: rgba(102, 192, 244, 0.2);
+  --field: rgba(0, 0, 0, 0.3);
+  --soft: rgba(255, 255, 255, 0.06);
+  --btn-blue: linear-gradient(90deg, #06bfff 0%, #2d73ff 100%);
+  --btn-green: linear-gradient(90deg, #75b022 5%, #588a1b 95%);
+  --btn-green-hi: linear-gradient(90deg, #8ed629 5%, #6aa621 95%);
+  --green-fg: #d2efa9;
+  --paper: #ffffff;
+  --ink: #17151f;
+  --paper-muted: #6a6680;
+  --ok: #a4d007;
+  --err: #ff8a8a;
+  --font-body: "Inter", Arial, "Helvetica Neue", Helvetica, sans-serif;
+  --font-paper: "Times New Roman", "Liberation Serif", Times, serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.5 var(--font-body);
+}
+
+/* top bar */
+.bar { background: var(--bar); border-bottom: 1px solid #0b0e13; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.bar-in { max-width: 1200px; margin: 0 auto; min-height: 50px; display: flex; align-items: center; gap: 32px; }
+.logo { display: flex; align-items: center; gap: 10px; color: var(--head); font: 700 15px/1 var(--font-body); letter-spacing: 0.2em; text-transform: uppercase; white-space: nowrap; }
+.mark { width: 26px; height: 26px; border-radius: 3px; background: var(--btn-blue); display: grid; place-items: center; flex: none; }
+.bar nav { display: flex; flex-wrap: wrap; gap: 2px; }
+.bar nav a { padding: 6px 12px; border-radius: 2px; color: var(--muted); font: 600 12px/1 var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; text-decoration: none; }
+.bar nav a:hover { color: var(--head); background: var(--soft); }
+.bar nav a:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+@media (max-width: 560px) { .bar nav { display: none; } }
+
+.page { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px 64px; overflow-x: clip; }
+.wrap { max-width: 1200px; margin: 0 auto; }
+
+/* hero */
+.hero { display: grid; gap: 10px; margin-bottom: 28px; }
+h1 { margin: 0; font: 500 30px/1.15 var(--font-body); letter-spacing: -0.01em; color: var(--head); }
+.tag { margin: 0; max-width: 60ch; color: var(--muted); font-size: 15px; }
+.tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tags span { padding: 2px 8px; border-radius: 2px; background: var(--tag); color: var(--blue); font-size: 12px; }
+
+/* grid */
+.grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; }
+@media (min-width: 980px) {
+  .grid { grid-template-columns: minmax(0, 470px) minmax(0, 1fr); align-items: start; }
+  .out { position: sticky; top: 16px; }
+}
+.col { display: grid; gap: 24px; min-width: 0; }
+.lab { margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line); font: 400 13px/1.2 var(--font-body); letter-spacing: 0.06em; text-transform: uppercase; color: var(--head); }
+summary.lab { display: flex; align-items: center; gap: 10px; margin: 0; cursor: pointer; list-style: none; }
+summary.lab::-webkit-details-marker { display: none; }
+summary.lab::after { content: "+"; margin-left: auto; color: var(--muted); font-size: 16px; }
+.fold[open] > summary.lab { margin-bottom: 12px; }
+.fold[open] > summary.lab::after { content: "\2212"; }
+summary.lab:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.hint { color: var(--muted); text-transform: none; letter-spacing: 0; font-size: 12px; }
+.note { margin: 0 0 12px; color: var(--muted); font-size: 13px; max-width: 62ch; }
+
+/* settings panel */
+.panel { background: var(--surface); border-radius: 3px; padding: 16px; display: grid; gap: 16px; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; position: relative; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { display: grid; gap: 2px; justify-items: center; padding: 10px 12px; background: var(--soft); color: var(--muted); border-radius: 2px; cursor: pointer; }
+.seg label b { font: 600 16px/1.2 var(--font-body); }
+.seg label small { font-size: 12px; }
+.seg label:hover { color: var(--head); }
+.seg input:checked + label { background: var(--btn-blue); color: var(--head); }
+.seg input:focus-visible + label { outline: 2px solid var(--head); outline-offset: 2px; }
+
+.sw { position: relative; display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; cursor: pointer; }
+.sw input { position: absolute; opacity: 0; pointer-events: none; }
+.track { width: 42px; height: 22px; border-radius: 3px; background: #32465a; position: relative; flex: none; margin-top: 1px; transition: background 0.15s; }
+.track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 2px; background: var(--muted); transition: transform 0.15s, background 0.15s; }
+.sw input:checked + .track { background: #1a9fff; }
+.sw input:checked + .track::after { transform: translateX(20px); background: var(--head); }
+.sw input:focus-visible + .track { outline: 2px solid var(--head); outline-offset: 2px; }
+.sw b { display: block; font-weight: 600; color: var(--head); }
+.sw small { display: block; color: var(--muted); font-size: 13px; }
+.sw code { padding: 1px 6px; border-radius: 2px; background: var(--tag); color: var(--blue); font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.sub { padding-left: 54px; }
+
+/* fields */
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 460px) { .fields { grid-template-columns: minmax(0, 1fr); } }
+.f { min-width: 0; }
+.f.full { grid-column: 1 / -1; }
+.f label { display: block; margin-bottom: 6px; font-size: 12px; color: var(--muted); }
+input[type="text"], textarea, select { width: 100%; min-width: 0; padding: 9px 10px; background: var(--field); color: var(--head); border: 1px solid #0f1822; border-radius: 3px; font: inherit; }
+input[type="text"]::placeholder, textarea::placeholder { color: #66758a; }
+input[type="text"]:focus, textarea:focus, select:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
+textarea { resize: vertical; line-height: 1.5; }
+#doc { min-height: 260px; }
+.count { margin-top: 6px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* sources */
+.srcs { display: grid; gap: 10px; }
+.src { display: grid; gap: 12px; padding: 14px; background: var(--surface); border-radius: 3px; }
+.src-head { display: flex; align-items: center; gap: 10px; }
+.src-head strong { font: 500 14px var(--font-body); color: var(--head); white-space: nowrap; }
+.src-head select { flex: 1; }
+.x { flex: none; width: 34px; height: 34px; border: 0; border-radius: 2px; background: var(--soft); color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; }
+.x:hover { color: var(--err); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.btn { padding: 8px 15px; border: 0; border-radius: 2px; background: var(--tag); color: var(--blue); font: 500 14px var(--font-body); cursor: pointer; }
+.btn:hover { background: rgba(102, 192, 244, 0.4); color: var(--head); }
+.btn:focus-visible, .x:focus-visible, .tabs button:focus-visible, .go:focus-visible { outline: 2px solid var(--head); outline-offset: 2px; }
+.btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.urlrow { display: flex; gap: 8px; }
+.urlrow input { flex: 1; }
+.urlrow .btn { flex: none; }
+.fstat { margin-top: 6px; font-size: 12px; color: var(--muted); }
+.fstat:empty { display: none; }
+.adv { margin-bottom: 14px; font-size: 13px; color: var(--muted); }
+.adv summary { width: fit-content; cursor: pointer; }
+.adv summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.adv .f { margin-top: 10px; }
+
+/* primary button */
+.go { width: 100%; padding: 14px 20px; border: 0; border-radius: 2px; background: var(--btn-green); color: var(--green-fg); font: 600 16px var(--font-body); cursor: pointer; }
+.go:hover { background: var(--btn-green-hi); color: var(--head); }
+.go[disabled] { opacity: 0.6; cursor: progress; background: var(--btn-green); color: var(--green-fg); }
+.status { min-height: 24px; margin-top: 12px; font-size: 14px; color: var(--muted); }
+.status.err { color: var(--err); }
+.status.ok { color: var(--ok); }
+.spin { display: inline-block; width: 14px; height: 14px; margin-right: 8px; vertical-align: -2px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--blue); animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* output */
+.out-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+.tabs { display: flex; }
+.tabs button { padding: 8px 14px; border: 0; background: transparent; color: var(--muted); font: 500 14px var(--font-body); cursor: pointer; }
+.tabs button:hover { color: var(--head); }
+.tabs button[aria-selected="true"] { color: var(--head); box-shadow: inset 0 -2px 0 var(--blue); }
+.n { margin-left: 6px; padding: 1px 7px; border-radius: 2px; background: var(--soft); color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 6px; }
+.banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+.pill { padding: 2px 8px; border-radius: 2px; background: var(--tag); color: var(--blue); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.paperbox { display: grid; gap: 14px; padding: clamp(10px, 2vw, 20px); background: rgba(0, 0, 0, 0.28); border-radius: 3px; max-height: min(78vh, 920px); overflow: auto; }
+.brk { text-align: center; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.sheet { position: relative; padding: clamp(18px, 5vw, 56px); background: var(--paper); color: var(--ink); border-radius: 2px; box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.7); font-family: var(--font-paper); font-size: 16px; line-height: 2; overflow-wrap: anywhere; }
+.sheet p { margin: 0; min-height: 1em; }
+.sheet .hdr { margin: 0 0 6px; text-align: right; font-size: 14px; line-height: 1.4; color: var(--paper-muted); }
+.sheet .ph { color: var(--paper-muted); }
+
+/* changes */
+.chg { display: grid; gap: 22px; padding: 4px 0; }
+.chg h3 { display: flex; align-items: center; margin: 0 0 10px; font: 500 14px var(--font-body); color: var(--head); }
+.list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.item { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; padding: 10px 12px; background: var(--surface); border-radius: 3px; font-size: 14px; }
+.item .snip { flex: 1 1 220px; min-width: 0; color: var(--muted); }
+.chip { padding: 2px 8px; border-radius: 2px; background: var(--tag); color: var(--blue); font: 600 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.why { font-size: 12px; color: var(--muted); }
+.empty { margin: 0; color: var(--muted); font-size: 14px; }
+
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); max-width: calc(100vw - 32px); padding: 10px 16px; background: var(--raised); color: var(--head); border: 1px solid var(--line); border-radius: 3px; font-size: 14px; z-index: 20; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+  .spin { animation: none; }
+}
+</style>
+</head>
+<body>
+<div class="bar"><div class="bar-in">
+  <span class="logo"><span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M5 6h6v6c0 3.4-1.8 5.6-5 6.6v-2.4c1.4-.7 2.2-1.8 2.4-3.4H5z M13 6h6v6c0 3.4-1.8 5.6-5 6.6v-2.4c1.4-.7 2.2-1.8 2.4-3.4H13z" fill="#ffffff"/></svg></span>Citationizer</span>
+  <nav aria-label="Sections"><a href="#l-style">Style</a><a href="#l-doc">Paper</a><a href="#l-src">Sources</a><a href="#l-out">Result</a></nav>
+</div></div>
+<div class="page">
+<div class="wrap">
+  <header class="hero">
+    <h1>Citationizer</h1>
+    <p class="tag">Format your paper and its citations in MLA or APA.</p>
+    <div class="tags"><span>MLA 9</span><span>APA 7</span><span>Credit by source</span><span>Word export</span></div>
+  </header>
+
+  <main class="grid">
+    <div class="col">
+      <section aria-labelledby="l-style">
+        <h2 class="lab" id="l-style">Style</h2>
+        <div class="panel">
+          <div class="seg" role="radiogroup" aria-label="Citation style">
+            <input type="radio" name="style" id="st-mla" value="mla" checked>
+            <label for="st-mla"><b>MLA</b><small>9th edition</small></label>
+            <input type="radio" name="style" id="st-apa" value="apa">
+            <label for="st-apa"><b>APA</b><small>7th edition</small></label>
+          </div>
+          <label class="sw" for="credit">
+            <input type="checkbox" id="credit" checked>
+            <span class="track" aria-hidden="true"></span>
+            <span><b>Add reference credit</b><small>Adds credits like <code id="creditEg">(Smith 4)</code> where a passage uses a source without naming the author. Sentences like "Smith states that..." are left alone.</small></span>
+          </label>
+          <label class="sw sub" for="creditNamed" id="creditNamedWrap">
+            <input type="checkbox" id="creditNamed">
+            <span class="track" aria-hidden="true"></span>
+            <span><b>Also credit named-author sentences</b><small>Adds only the page number when the author is already named.</small></span>
+          </label>
+        </div>
+      </section>
+
+      <section aria-labelledby="l-details">
+        <details class="fold"><summary class="lab" id="l-details">Paper details <span class="hint">title, name, course, date</span></summary>
+        <div class="fields">
+          <div class="f full"><label for="m-title">Title</label><input type="text" id="m-title" placeholder="Title of your paper"></div>
+          <div class="f"><label for="m-name">Your name</label><input type="text" id="m-name" autocomplete="name"></div>
+          <div class="f"><label for="m-instructor">Instructor</label><input type="text" id="m-instructor"></div>
+          <div class="f"><label for="m-course">Course</label><input type="text" id="m-course"></div>
+          <div class="f"><label for="m-date">Date</label><input type="text" id="m-date" placeholder="16 November 2026"></div>
+          <div class="f full" id="school-f" hidden><label for="m-school">Institution (APA title page)</label><input type="text" id="m-school"></div>
+        </div></details>
+      </section>
+
+      <section aria-labelledby="l-doc">
+        <h2 class="lab" id="l-doc">Your paper</h2>
+        <label class="note" for="doc" style="display:block">Paste the full text. Existing citations get converted.</label>
+        <textarea id="doc" spellcheck="true">Community gardens do more than grow vegetables. Residents who garden together report knowing more of their neighbors by name, and blocks with an active garden see fewer vacant lots. Whitfield and Okafor argue that the social ties formed in these spaces matter as much as the food itself.
+
+Starting a garden is also cheaper than most people expect. A typical plot needs only soil, a water source, and a group willing to share tools. Tran warns that "most gardens fail in their second year when the first wave of volunteers moves on." Volunteers who agree on a regular schedule early keep gardens alive longer.</textarea>
+        <div class="count" id="count"></div>
+      </section>
+
+      <section aria-labelledby="l-src">
+        <h2 class="lab" id="l-src">Sources</h2>
+        <p class="note">Paste a link and press Fetch, or paste the passages yourself. Keep page markers like [p. 12] for page numbers. The samples are made up.</p>
+        <div class="srcs" id="sources"></div>
+        <div class="row">
+          <button type="button" class="btn" id="addSrc">Add source</button>
+          <button type="button" class="btn" id="loadEg">Load sample</button>
+          <button type="button" class="btn" id="clearAll">Clear all</button>
+        </div>
+      </section>
+
+      <section>
+        <details class="adv"><summary>Server access code</summary><div class="f"><label for="code">Only needed if your server sets one</label><input type="text" id="code" autocomplete="off" spellcheck="false"></div></details>
+        <button type="button" class="go" id="go">Format my paper</button>
+        <div class="row" style="margin-top:10px" id="stopRow" hidden><button type="button" class="btn" id="stop">Stop</button></div>
+        <div class="status" id="status" role="status" aria-live="polite"></div>
+      </section>
+    </div>
+
+    <div class="col out" id="out">
+      <section aria-labelledby="l-out">
+        <h2 class="lab" id="l-out">Result</h2>
+        <div class="out-head">
+          <div class="tabs" role="tablist">
+            <button type="button" role="tab" data-tab="paper" aria-selected="true">Paper</button>
+            <button type="button" role="tab" data-tab="changes" aria-selected="false">Changes<span class="n" id="chgN">0</span></button>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn" id="copy">Copy</button>
+            <button type="button" class="btn" id="dl">Download .docx</button>
+          </div>
+        </div>
+        <p class="banner" id="banner"></p>
+        <div id="panePaper" class="paperbox" role="tabpanel"></div>
+        <div id="paneChanges" class="chg" role="tabpanel" hidden></div>
+      </section>
+    </div>
+  </main>
+</div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="config.js"></script>
+<script>
+//#pure-start
+const SOURCE_TYPES = [
+  ["auto", "Auto-detect type"], ["journal", "Journal article"], ["book", "Book"],
+  ["chapter", "Chapter in an edited book"], ["web", "Web page or website"], ["news", "News or magazine article"],
+  ["video", "Video or film"], ["audio", "Podcast or audio"], ["interview", "Interview"],
+  ["report", "Report or government document"], ["literature", "Play, poem, or other literature"],
+  ["scripture", "Scripture or sacred text"], ["legal", "Legal case or law"], ["other", "Other"]
+];
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+const EXAMPLE = {
+  meta: { title: "Why Neighborhoods Need Gardens", name: "Alex Rivera", instructor: "Professor Lin", course: "ENG 101", date: "16 November 2026", school: "Example University" },
+  sources: [
+    { type: "journal", url: "", details: "Dana Whitfield and Rui Okafor. \"Small Plots, Large Returns: Community Gardens and Neighborhood Health.\" Journal of Urban Ecology, volume 14, issue 2, 2021, pages 101-118.",
+      text: "[p. 101] We surveyed residents in 40 neighborhoods that had a community garden and compared them with similar neighborhoods that did not.\n[p. 104] Residents who gardened together reported knowing, on average, twice as many neighbors by name as residents who did not.\n[p. 107] Blocks with an active garden recorded fewer vacant lots over the five-year period. The social ties formed in these spaces matter as much as the food itself." },
+    { type: "web", url: "https://example.org/start-a-garden", details: "Marisol Tran. Page title: Starting a Community Garden. Website: Greenline Guides. Publisher: Greenline Alliance. Published 3 March 2022.",
+      text: "Starting a Community Garden\nA typical plot needs only soil, a water source, and a group willing to share tools. Most gardens fail in their second year when the first wave of volunteers moves on. Agree on a regular work schedule early and write it down." }
+  ]
+};
+const EXAMPLE_RESULT = {
+  example: true,
+  form: { style: "mla", meta: EXAMPLE.meta },
+  title: "Why Neighborhoods Need Gardens",
+  body: "Community gardens do more than grow vegetables. Residents who garden together report knowing more of their neighbors by name (Whitfield and Okafor 104), and blocks with an active garden see fewer vacant lots (Whitfield and Okafor 107). Whitfield and Okafor argue that the social ties formed in these spaces matter as much as the food itself.\n\nStarting a garden is also cheaper than most people expect. A typical plot needs only soil, a water source, and a group willing to share tools (Tran). Tran warns that “most gardens fail in their second year when the first wave of volunteers moves on.” Volunteers who agree on a regular schedule early keep gardens alive longer (Tran).",
+  references: [
+    "Tran, Marisol. “Starting a Community Garden.” *Greenline Guides*, Greenline Alliance, 3 Mar. 2022, example.org/start-a-garden.",
+    "Whitfield, Dana, and Rui Okafor. “Small Plots, Large Returns: Community Gardens and Neighborhood Health.” *Journal of Urban Ecology*, vol. 14, no. 2, 2021, pp. 101–18."
+  ],
+  added: [
+    { text: "Residents who garden together report knowing more of their neighbors by name", credit: "(Whitfield and Okafor 104)" },
+    { text: "blocks with an active garden see fewer vacant lots", credit: "(Whitfield and Okafor 107)" },
+    { text: "A typical plot needs only soil, a water source, and a group willing to share tools", credit: "(Tran)" },
+    { text: "Volunteers who agree on a regular schedule early keep gardens alive longer", credit: "(Tran)" }
+  ],
+  skipped: [
+    { text: "Whitfield and Okafor argue that the social ties formed in these spaces", reason: "Names the author already" },
+    { text: "Tran warns that “most gardens fail in their second year", reason: "Names the author already" }
+  ],
+  warnings: ["Source 2 has no page numbers, so its credits show the author only."]
+};
+
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+function xmlEsc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
+
+function fmtDate(s, style) {
+  s = String(s || "").trim();
+  if (!s) return "";
+  var d, iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (iso) d = new Date(+iso[1], +iso[2] - 1, +iso[3]);
+  else { if (!/\d{4}/.test(s)) return s; d = new Date(s); }
+  if (isNaN(d.getTime())) return s;
+  return style === "apa"
+    ? MONTHS[d.getMonth()] + " " + d.getDate() + ", " + d.getFullYear()
+    : d.getDate() + " " + MONTHS[d.getMonth()] + " " + d.getFullYear();
+}
+function lastName(n) {
+  var t = String(n || "").trim().replace(/,?\s+(Jr|Sr|II|III|IV)\.?$/i, "").split(/\s+/);
+  return t[t.length - 1] || "";
+}
+function parseBody(src) {
+  return String(src || "").replace(/\r/g, "").split(/\n{2,}/).map(function (s) { return s.trim(); }).filter(Boolean).map(function (s) {
+    var m = /^(#{1,3})\s+([\s\S]*)$/.exec(s);
+    if (m) return { t: "h" + m[1].length, x: m[2].replace(/\n/g, " ") };
+    if (s.charAt(0) === ">") return { t: "bq", x: s.split("\n").map(function (l) { return l.replace(/^>\s?/, ""); }).join(" ") };
+    return { t: "p", x: s.replace(/\n/g, " ") };
+  });
+}
+var ITEM_STYLE = {
+  ind: "text-indent:0.5in;", bq: "margin-left:0.5in;", hang: "margin-left:0.5in;text-indent:-0.5in;",
+  ctr: "text-align:center;", ctrb: "text-align:center;font-weight:bold;", left: "", leftb: "font-weight:bold;",
+  lefti: "font-style:italic;", leftbi: "font-weight:bold;font-style:italic;", blank: ""
+};
+var DOCX_ITEM = {
+  ind: { first: 720 }, bq: { left: 720 }, hang: { left: 720, hang: 720 }, ctr: { jc: "center" },
+  ctrb: { jc: "center", b: true }, left: {}, leftb: { b: true }, lefti: { i: true }, leftbi: { b: true, i: true }, blank: {}
+};
+
+function layout(r) {
+  var f = r.form, mla = f.style === "mla", M = f.meta || {};
+  var title = r.title || "[Title]";
+  var bodyItems = parseBody(r.body).map(function (b) {
+    if (b.t === "p") return { k: "ind", x: b.x };
+    if (b.t === "bq") return { k: "bq", x: b.x };
+    var lv = +b.t.charAt(1);
+    if (mla) return { k: lv === 1 ? "leftb" : lv === 2 ? "left" : "lefti", x: b.x };
+    return { k: lv === 1 ? "ctrb" : lv === 2 ? "leftb" : "leftbi", x: b.x };
+  });
+  var refs = (r.references || []).map(function (x) { return { k: "hang", x: x }; });
+  var refTitle = mla ? { k: "ctr", x: "Works Cited" } : { k: "ctrb", x: "References" };
+  var pages = [];
+  if (mla) {
+    var head = [M.name, M.instructor, M.course, fmtDate(M.date, "mla")].filter(Boolean).map(function (x) { return { k: "left", x: x }; });
+    pages.push({ items: head.concat([{ k: "ctr", x: title }], bodyItems) });
+  } else {
+    var tp = [{ k: "blank" }, { k: "blank" }, { k: "blank" }, { k: "ctrb", x: title }, { k: "blank" }]
+      .concat([M.name, M.school, M.course, M.instructor, fmtDate(M.date, "apa")].filter(Boolean).map(function (x) { return { k: "ctr", x: x }; }));
+    pages.push({ items: tp });
+    pages.push({ items: [{ k: "ctrb", x: title }].concat(bodyItems) });
+  }
+  if (refs.length) pages.push({ items: [refTitle].concat(refs) });
+  return pages;
+}
+function inlineHtml(x) { return esc(x).replace(/\*([^*]+)\*/g, "<em>$1</em>"); }
+function itemHtml(it, base) {
+  if (it.k === "blank") return '<p style="' + base + '">&nbsp;</p>';
+  return '<p style="' + base + (ITEM_STYLE[it.k] || "") + '">' + inlineHtml(it.x) + "</p>";
+}
+function plainText(pages) {
+  return pages.map(function (pg) {
+    var out = "", prev = null;
+    pg.items.forEach(function (it, i) {
+      var t = it.k === "blank" ? "" : String(it.x).replace(/\*/g, "");
+      if (it.k === "ind" || it.k === "bq") t = "    " + t;
+      if (i) out += (prev === "left" && it.k === "left") ? "\n" : "\n\n";
+      out += t; prev = it.k;
+    });
+    return out;
+  }).join("\n\n\n");
+}
+
+var W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+var XML_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+function runsXml(text, o) {
+  o = o || {};
+  var parts = String(text).split("*"), ok = parts.length % 2 === 1;
+  var segs = ok ? parts.map(function (t, k) { return { t: t, i: !!o.i !== (k % 2 === 1) }; }) : [{ t: parts.join(""), i: !!o.i }];
+  return segs.filter(function (s) { return s.t !== ""; }).map(function (s) {
+    return "<w:r><w:rPr>" + (o.b ? "<w:b/>" : "") + (s.i ? "<w:i/>" : "") + '</w:rPr><w:t xml:space="preserve">' + xmlEsc(s.t) + "</w:t></w:r>";
+  }).join("");
+}
+function docxPara(it, pb) {
+  var o = DOCX_ITEM[it.k] || {};
+  var ind = (o.left || o.first || o.hang)
+    ? "<w:ind" + (o.left ? ' w:left="' + o.left + '"' : "") + (o.hang ? ' w:hanging="' + o.hang + '"' : "") + (o.first ? ' w:firstLine="' + o.first + '"' : "") + "/>" : "";
+  var pPr = "<w:pPr>" + (pb ? "<w:pageBreakBefore/>" : "") + ind + (o.jc ? '<w:jc w:val="' + o.jc + '"/>' : "") + "</w:pPr>";
+  return "<w:p>" + pPr + (it.k === "blank" ? "" : runsXml(it.x, o)) + "</w:p>";
+}
+function docxParts(r) {
+  var pages = layout(r), f = r.form, mla = f.style === "mla";
+  var body = pages.map(function (pg, pi) { return pg.items.map(function (it, ii) { return docxPara(it, pi > 0 && ii === 0); }).join(""); }).join("");
+  var sect = '<w:sectPr><w:headerReference w:type="default" r:id="rId2"/><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>';
+  var last = lastName((f.meta || {}).name);
+  var hdrRuns = (mla && last ? '<w:r><w:t xml:space="preserve">' + xmlEsc(last) + " </w:t></w:r>" : "") +
+    '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>1</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>';
+  return {
+    types: XML_HEAD + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>',
+    rels: XML_HEAD + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
+    docRels: XML_HEAD + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/></Relationships>',
+    styles: XML_HEAD + '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="Times New Roman" w:cs="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/><w:lang w:val="en-US"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="480" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style></w:styles>',
+    document: XML_HEAD + "<w:document " + W_NS + "><w:body>" + body + sect + "</w:body></w:document>",
+    header: XML_HEAD + "<w:hdr " + W_NS + '><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="right"/></w:pPr>' + hdrRuns + "</w:p></w:hdr>"
+  };
+}
+function slug(t) { return String(t || "paper").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "paper"; }
+
+/* ---- prompt ---- */
+var MLA_RULES = 'MLA 9TH EDITION RULES\n' +
+  '- In-text: (Author Page) with no comma and no "p." as in (Smith 4). Two authors: (Smith and Jones 4). Three or more: (Smith et al. 4). No author: a shortened title, in quotation marks for articles, pages and chapters, in italics for books and whole works. Same author with several works: add a shortened title, (Smith, *Short Title* 4). Indirect source: (qtd. in Jones 12). No page numbers (most web pages): author only, (Smith). Audio and video: a timestamp range, (Smith 00:02:15-00:02:35). Plays: act.scene.line as in (*Hamlet* 3.1.64-65). Poems: (lines 5-8). Scripture: (*New International Version*, John 3.16), then (Jn 3.16). Put the credit inside the sentence, before its closing period.\n' +
+  '- Block quote: prose of more than four typed lines (about 40 words or more) becomes its own paragraph, no quotation marks, with the credit after the final punctuation.\n' +
+  '- Works Cited entry core elements, in order: Author. "Title of Source." *Title of Container*, Other contributors, Version, Number, Publisher, Publication date, Location. First author last name first; two authors joined by "and"; three or more: first author followed by "et al." Standalone works are italic; parts of larger works go in quotation marks. Leave out the publisher when it matches the container or site name, and for periodicals. URLs without "https://"; use a DOI instead when one is given. Dates as day month year with abbreviated months (Jan., Feb., Mar., Apr., May, June, July, Aug., Sept., Oct., Nov., Dec.). No access dates. A corporate author that is also the publisher is dropped and the entry starts with the title. No author: start with the title. Titles in title case. Page ranges like 101-18. Sorted alphabetically by the first word, ignoring A, An and The.';
+var APA_RULES = 'APA 7TH EDITION RULES\n' +
+  '- In-text: parenthetical (Author, Year, p. 4); narrative Author (Year). Two authors: (Smith & Jones, 2020, p. 4) or Smith and Jones (2020). Three or more: (Smith et al., 2020, p. 4). Group author: spell it out on first use with its abbreviation in brackets. No author: a shortened title, in quotation marks for articles, chapters and web pages, in italics for books, reports and whole works. No date: (Smith, n.d., p. 4). Use "p." or "pp." for direct quotes and for specific passages when the source text gives a page. No page numbers: use (para. 5) when the paragraphs can be counted in the source text, otherwise a section name, otherwise leave it out. Indirect source: (Jones, 2018, as cited in Smith, 2020, p. 4). Several works in one parenthesis: alphabetical, separated by semicolons. Scripture and classics: (New International Version, 1978, John 3:16).\n' +
+  '- Block quote: 40 or more words becomes its own paragraph, no quotation marks, with the citation after the final punctuation.\n' +
+  '- Reference list entries: Author, A. A., & Author, B. B. (Year). Title of article in sentence case. *Journal Title in Title Case*, *Volume*(Issue), pages. https://doi.org/xxxx . Books: Author, A. A. (Year). *Title in sentence case* (Edition). Publisher. Web pages: Author, A. A. (Year, Month Day). *Title in sentence case*. Site Name. URL. List up to 20 authors with an ampersand before the last. No author: the title takes the author spot. Use (n.d.) when there is no date. Use a DOI as https://doi.org/... when given, otherwise the URL. Leave out the publisher when it is the same as the author. Sorted alphabetically by the first author\'s surname. Headings: level 1 is "# ", level 2 is "## ", level 3 is "### ".';
+var SHARED_RULES = 'RULES FOR EVERY STYLE\n' +
+  '- Change formatting and citations only. Never rewrite, add or remove the author\'s ideas or wording. You may switch to curly quotation marks, turn long quotations into block quotes, and fix headings.\n' +
+  '- Never invent a detail about a source. Use only what the link, notes and source text give. If something the style needs is missing (author, date, publisher, page), leave it out of the entry and add one warning naming the source and what is missing.\n' +
+  '- Use a page number only when the source text carries a page marker that covers the passage, such as [p. 12], "Page 12", "p. 12", or a line holding only a number between dashes. Never guess one. Markers like [para. 3] were added by a web scraper to count paragraphs and are not printed in the source: APA 7 may use them as (para. 3) when a page has no page numbers, but MLA 9 must not. If there is none, use the style\'s no-page form and add one warning for that source.\n' +
+  '- Sources can be different types, and some works have their own conventions (journal articles, books, chapters, web pages, news, video, podcasts, interviews, reports, legal cases, plays, poems, scripture, AI output). Format each source\'s entry and its in-text citations by that source\'s own type. When the type is "auto", infer it from the link and notes.\n' +
+  '- Match each passage of the paper to the source it came from by comparing it with the source texts. Credit a passage only when it clearly comes from a source.\n' +
+  '- Convert any in-text citations the paper already has into the target style and keep them. They do not count as added.\n' +
+  '- Build one reference entry for every source the user listed, in the order the style requires. If a listed source matches nothing in the paper, still list it and add a warning.\n' +
+  '- Use *asterisks* around italic text and nothing else for emphasis, in both body and references.\n' +
+  '- If the paper has its own title line, heading block or reference list, remove those from "body" (the app rebuilds them) and use any source details they hold.';
+var OUTPUT_RULES = 'Return one JSON object with exactly these keys:\n' +
+  '{"title": string (the user\'s title if given, otherwise the paper\'s own title if it has one, otherwise ""),\n' +
+  ' "body": string (the paper without its title or reference list; paragraphs separated by one blank line; a heading is a paragraph starting with "# ", "## " or "### "; a block quotation is a paragraph starting with "> " and has no quotation marks; keep the author\'s paragraphing),\n' +
+  ' "references": string[] (formatted entries in final order),\n' +
+  ' "added": [{"text": first 8 to 12 words of the sentence, "credit": the credit you added}],\n' +
+  ' "skipped": [{"text": first 8 to 12 words of the sentence, "reason": a few words}] (passages from a source left without a credit because they already name the author),\n' +
+  ' "warnings": string[] (short plain sentences for the student)}';
+
+function buildPrompt(f) {
+  var mla = f.style === "mla";
+  var label = mla ? "MLA 9th edition" : "APA 7th edition";
+  var credit;
+  if (f.credit) {
+    credit = "REFERENCE CREDIT is ON. At the end of each sentence or clause that uses a source's facts, ideas or words without naming that source's author in the sentence, add an in-text credit in " + label + " form" +
+      (mla ? ", such as (Smith 4), before the closing period." : ", such as (Smith, 2020, p. 4), before the closing period.") +
+      " A sentence that already names the author as its attribution (\"Smith states that...\", \"According to Smith,\", \"Smith and Jones argue...\") gets no credit and stays exactly as written" +
+      (f.creditNamed ? ", EXCEPT add the page " + (mla ? "number alone, like (104)," : "like (p. 104),") + " when the source text gives one" + (mla ? "." : ", and make sure the year follows the author's name.") : ".");
+  } else {
+    credit = "REFERENCE CREDIT is OFF. Do not add any new in-text credits. Still convert citations the paper already has, and still build the reference list.";
+  }
+  var data = {
+    style: label, userTitle: f.meta.title || "", paper: f.doc,
+    sources: f.sources.map(function (s, i) { return { id: i + 1, type: s.type, link: s.url, notes: s.details, text: s.text }; })
+  };
+  return "You format student papers and their citations. Work only from the data at the end. Reply with the JSON object and nothing else.\n\n" +
+    (mla ? MLA_RULES : APA_RULES) + "\n\n" + SHARED_RULES + "\n\n" + credit + "\n\n" + OUTPUT_RULES + "\n\nDATA (JSON):\n" + JSON.stringify(data);
+}
+function parseJsonLoose(text) {
+  text = String(text || "").trim();
+  var tries = [text];
+  var fence = /```(?:json)?\s*([\s\S]*?)```/i.exec(text);
+  if (fence) tries.push(fence[1].trim());
+  var a = text.indexOf("{"), b = text.lastIndexOf("}");
+  if (a >= 0 && b > a) tries.push(text.slice(a, b + 1));
+  for (var i = 0; i < tries.length; i++) { try { return JSON.parse(tries[i]); } catch (e) { /* try next */ } }
+  throw { code: "invalid_json" };
+}
+//#pure-end
+
+/* ---------------- interface ---------------- */
+var $ = function (s, r) { return (r || document).querySelector(s); };
+var state = { sources: [], seq: 0, result: null, ctl: null, running: false, blocked: false };
+
+function toast(msg) {
+  var t = $("#toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.h); toast.h = setTimeout(function () { t.hidden = true; }, 2800);
+}
+function setStatus(msg, kind) {
+  var el = $("#status"); el.className = "status" + (kind ? " " + kind : "");
+  el.innerHTML = (kind === "busy" ? '<span class="spin" aria-hidden="true"></span>' : "") + esc(msg);
+}
+function apiBase() { var c = window.CITATIONIZER || {}; return String(c.api || "").replace(/\/+$/, ""); }
+function apiHeaders() {
+  var h = { "content-type": "application/json" }, code = $("#code").value.trim();
+  if (code) h["x-access-code"] = code;
+  return h;
+}
+
+function srcHtml(s, i) {
+  var opts = SOURCE_TYPES.map(function (o) { return '<option value="' + o[0] + '"' + (s.type === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("");
+  var id = "s" + s.id;
+  return '<div class="src" data-id="' + s.id + '">' +
+    '<div class="src-head"><strong>Source ' + (i + 1) + '</strong><select id="' + id + '-type" data-f="type" aria-label="Source ' + (i + 1) + ' type">' + opts + '</select><button type="button" class="x" data-act="rm" aria-label="Remove source ' + (i + 1) + '">×</button></div>' +
+    '<div class="f"><label for="' + id + '-url">Link (optional)</label><div class="urlrow"><input type="text" id="' + id + '-url" data-f="url" inputmode="url" placeholder="https://" value="' + esc(s.url) + '"><button type="button" class="btn" data-act="fetch">Fetch</button></div><div class="fstat" role="status"></div></div>' +
+    '<div class="f"><label for="' + id + '-details">What you know about it</label><textarea id="' + id + '-details" data-f="details" rows="2" placeholder="Author, title, date, publisher, edition...">' + esc(s.details) + '</textarea></div>' +
+    '<div class="f"><label for="' + id + '-text">Source text you used</label><textarea id="' + id + '-text" data-f="text" rows="5" placeholder="Paste the passages. Keep page markers like [p. 12] so credits get the right page.">' + esc(s.text) + '</textarea></div></div>';
+}
+function renderSources() {
+  $("#sources").innerHTML = state.sources.map(srcHtml).join("");
+}
+function newSource(o) { o = o || {}; return { id: ++state.seq, type: o.type || "auto", url: o.url || "", details: o.details || "", text: o.text || "" }; }
+
+function syncStyle() {
+  var mla = $("#st-mla").checked;
+  $("#creditEg").textContent = mla ? "(Smith 4)" : "(Smith, 2020, p. 4)";
+  $("#school-f").hidden = mla;
+}
+function syncCredit() { $("#creditNamedWrap").hidden = !$("#credit").checked; }
+function syncCount() {
+  var n = ($("#doc").value.trim().match(/\S+/g) || []).length;
+  $("#count").textContent = n.toLocaleString() + (n === 1 ? " word" : " words");
+}
+
+function readForm() {
+  var cut = [], doc = $("#doc").value;
+  if (doc.length > 80000) { doc = doc.slice(0, 80000); cut.push("Your paper was cut at 80,000 characters."); }
+  var sources = state.sources.filter(function (s) { return (s.url + s.details + s.text).trim(); }).map(function (s, i) {
+    var t = s.text; if (t.length > 40000) { t = t.slice(0, 40000); cut.push("Source " + (i + 1) + " text was cut at 40,000 characters."); }
+    return { type: s.type, url: s.url.trim(), details: s.details.trim(), text: t };
+  });
+  return {
+    style: $("#st-mla").checked ? "mla" : "apa",
+    credit: $("#credit").checked, creditNamed: $("#credit").checked && $("#creditNamed").checked,
+    meta: { title: $("#m-title").value.trim(), name: $("#m-name").value.trim(), instructor: $("#m-instructor").value.trim(), course: $("#m-course").value.trim(), date: $("#m-date").value.trim(), school: $("#m-school").value.trim() },
+    doc: doc, sources: sources, cut: cut
+  };
+}
+
+function loadExample() {
+  var m = EXAMPLE.meta;
+  $("#st-mla").checked = true; $("#credit").checked = true; $("#creditNamed").checked = false;
+  $("#m-title").value = m.title; $("#m-name").value = m.name; $("#m-instructor").value = m.instructor; $("#m-course").value = m.course; $("#m-date").value = m.date; $("#m-school").value = m.school;
+  $("#doc").value = "Community gardens do more than grow vegetables. Residents who garden together report knowing more of their neighbors by name, and blocks with an active garden see fewer vacant lots. Whitfield and Okafor argue that the social ties formed in these spaces matter as much as the food itself.\n\nStarting a garden is also cheaper than most people expect. A typical plot needs only soil, a water source, and a group willing to share tools. Tran warns that \"most gardens fail in their second year when the first wave of volunteers moves on.\" Volunteers who agree on a regular schedule early keep gardens alive longer.";
+  state.sources = EXAMPLE.sources.map(newSource);
+  renderSources(); syncStyle(); syncCredit(); syncCount();
+  renderResult(EXAMPLE_RESULT);
+}
+function clearAll() {
+  ["#m-title", "#m-name", "#m-instructor", "#m-course", "#m-date", "#m-school", "#doc"].forEach(function (s) { $(s).value = ""; });
+  state.sources = [newSource()]; renderSources(); syncCount(); setStatus("");
+  $("#doc").focus();
+}
+
+/* ---- output ---- */
+function renderResult(r) {
+  state.result = r;
+  var pages = layout(r), f = r.form, mla = f.style === "mla", last = lastName((f.meta || {}).name);
+  var base = "";
+  var html = pages.map(function (pg, i) {
+    var hdr = i === 0 ? '<p class="hdr">' + esc((mla && last ? last + " " : "") + "1") + "</p>" : "";
+    var inner = pg.items.map(function (it) {
+      if (it.k === "ctr" || it.k === "ctrb") { if (it.x === "[Title]") return '<p class="ph" style="' + ITEM_STYLE[it.k] + '">[Title]</p>'; }
+      return itemHtml(it, base);
+    }).join("");
+    return (i ? '<div class="brk">New page</div>' : "") + '<div class="sheet">' + hdr + inner + "</div>";
+  }).join("");
+  $("#panePaper").innerHTML = html;
+  $("#banner").innerHTML = (r.example ? '<span class="pill">Example</span>Sample paper in MLA 9. Format your own to replace it.' : '<span class="pill">' + (mla ? "MLA 9" : "APA 7") + "</span>" + (r.added.length) + " credit" + (r.added.length === 1 ? "" : "s") + " added, " + (r.warnings.length) + " to check.");
+  var sec = function (title, n, body) { return "<section><h3>" + title + '<span class="n">' + n + "</span></h3>" + body + "</section>"; };
+  var added = r.added.length ? '<ul class="list">' + r.added.map(function (a) { return '<li class="item"><span class="snip">' + esc(a.text) + '</span><span class="chip">' + esc(a.credit) + "</span></li>"; }).join("") + "</ul>" : '<p class="empty">None. Reference credit was off, or nothing needed one.</p>';
+  var skipped = r.skipped.length ? '<ul class="list">' + r.skipped.map(function (a) { return '<li class="item"><span class="snip">' + esc(a.text) + '</span><span class="why">' + esc(a.reason) + "</span></li>"; }).join("") + "</ul>" : '<p class="empty">Nothing was skipped.</p>';
+  var warns = r.warnings.length ? '<ul class="list">' + r.warnings.map(function (w) { return '<li class="item"><span class="snip" style="color:var(--fg)">' + esc(w) + "</span></li>"; }).join("") + "</ul>" : '<p class="empty">Nothing to flag.</p>';
+  $("#paneChanges").innerHTML = sec("Credits added", r.added.length, added) + sec("Left alone", r.skipped.length, skipped) + sec("Check these", r.warnings.length, warns);
+  $("#chgN").textContent = String(r.added.length + r.skipped.length + r.warnings.length);
+}
+function showTab(name) {
+  document.querySelectorAll(".tabs button").forEach(function (b) { b.setAttribute("aria-selected", String(b.dataset.tab === name)); });
+  $("#panePaper").hidden = name !== "paper"; $("#paneChanges").hidden = name !== "changes";
+}
+
+function normalize(data, f) {
+  var arr = function (v) { return Array.isArray(v) ? v : []; };
+  var str = function (v) { return typeof v === "string" ? v : ""; };
+  if (!data || typeof data !== "object" || !str(data.body).trim()) throw { code: "bad_shape" };
+  return {
+    form: { style: f.style, meta: f.meta },
+    title: f.meta.title || str(data.title).trim(),
+    body: str(data.body),
+    references: arr(data.references).map(String).filter(Boolean),
+    added: arr(data.added).map(function (a) { return { text: str(a && a.text), credit: str(a && a.credit) }; }),
+    skipped: arr(data.skipped).map(function (a) { return { text: str(a && a.text), reason: str(a && a.reason) }; }),
+    warnings: arr(data.warnings).map(String).concat(f.cut)
+  };
+}
+function errCopy(e) {
+  switch (e && e.code) {
+    case "not_configured": return "The server address is not set. Add it to docs/config.js (see the README).";
+    case "unauthorized": return "The access code is missing or wrong. Enter it under Server access code.";
+    case "rate_limited": return (e && e.message) || "Too many requests right now. Wait a minute, then try again.";
+    case "too_large": return "That is too much to format at once. Try the paper in two parts.";
+    case "invalid_json": case "bad_shape": return "The result came back incomplete, usually because the paper is long. Try again, or format it in sections.";
+    case "network": return "Could not reach the server. Check your connection and the address in config.js.";
+    case "forbidden": return "The server does not allow this site. Add this address to ALLOWED_ORIGIN.";
+    case "cancelled": return "";
+    default: return (e && e.message) || "Something went wrong while formatting. Try again.";
+  }
+}
+
+async function streamFormat(prompt, signal, onText) {
+  var res;
+  try { res = await fetch(apiBase() + "/api/format", { method: "POST", headers: apiHeaders(), body: JSON.stringify({ prompt: prompt }), signal: signal }); }
+  catch (e) { throw { code: e && e.name === "AbortError" ? "cancelled" : "network" }; }
+  if (!res.ok) {
+    var j = {}; try { j = await res.json(); } catch (e) { /* no body */ }
+    throw { code: j.code || (res.status === 401 ? "unauthorized" : res.status === 429 ? "rate_limited" : res.status === 413 ? "too_large" : "server"), message: j.error };
+  }
+  var reader = res.body.getReader(), dec = new TextDecoder(), text = "";
+  try { for (;;) { var c = await reader.read(); if (c.done) break; text += dec.decode(c.value, { stream: true }); onText(text); } }
+  catch (e) { throw { code: e && e.name === "AbortError" ? "cancelled" : "network" }; }
+  return text;
+}
+
+async function run() {
+  if (state.running) return;
+  var f = readForm();
+  if (!f.doc.trim()) { setStatus("Paste your paper first.", "err"); $("#doc").focus(); return; }
+  if (f.credit && !f.sources.length) { setStatus("Add at least one source so there is something to credit.", "err"); return; }
+  if (!apiBase()) { setStatus(errCopy({ code: "not_configured" }), "err"); return; }
+  state.running = true; state.ctl = new AbortController();
+  $("#go").disabled = true; $("#stopRow").hidden = false;
+  setStatus("Reading your paper and sources...", "busy");
+  try {
+    var raw = await streamFormat(buildPrompt(f), state.ctl.signal, function (t) { setStatus("Formatting... " + t.length.toLocaleString() + " characters written", "busy"); });
+    var r = normalize(parseJsonLoose(raw), f);
+    renderResult(r); showTab("paper");
+    setStatus("Done. " + r.added.length + " credit" + (r.added.length === 1 ? "" : "s") + " added" + (r.warnings.length ? ", " + r.warnings.length + " to check." : "."), "ok");
+    if (window.matchMedia("(max-width: 979px)").matches) $("#out").scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  } catch (e) {
+    if (e && e.code === "cancelled") setStatus("Stopped.");
+    else setStatus(errCopy(e), "err");
+  } finally {
+    state.running = false; state.ctl = null; $("#go").disabled = false; $("#stopRow").hidden = true;
+  }
+}
+
+async function copyResult() {
+  var r = state.result; if (!r) return;
+  var pages = layout(r), text = plainText(pages);
+  var base = 'margin:0;line-height:2;font-family:"Times New Roman",serif;font-size:12pt;';
+  var html = '<div style="font-family:\'Times New Roman\',serif;font-size:12pt">' + pages.map(function (pg) { return pg.items.map(function (it) { return itemHtml(it, base); }).join(""); }).join('<br style="page-break-before:always">') + "</div>";
+  try {
+    if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+      await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) })]);
+      toast("Copied with formatting."); return;
+    }
+  } catch (e) { /* fall through */ }
+  try { await navigator.clipboard.writeText(text); toast("Copied as plain text."); }
+  catch (e) { toast("Copy is blocked here. Select the paper and copy it by hand."); }
+}
+async function download() {
+  var r = state.result; if (!r) return;
+  if (!window.JSZip) { toast("The Word export did not load. Reload the page and try again."); return; }
+  try {
+    var p = docxParts(r), z = new window.JSZip(), NF = { createFolders: false };
+    z.file("[Content_Types].xml", p.types, NF); z.file("_rels/.rels", p.rels, NF);
+    z.file("word/document.xml", p.document, NF); z.file("word/styles.xml", p.styles, NF);
+    z.file("word/header1.xml", p.header, NF); z.file("word/_rels/document.xml.rels", p.docRels, NF);
+    var blob = await z.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    var url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = slug(r.title) + "-" + r.form.style + ".docx";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    toast("Downloaded.");
+  } catch (e) { toast("Could not build the file."); }
+}
+
+/* ---- wiring ---- */
+document.querySelectorAll('input[name="style"]').forEach(function (el) { el.addEventListener("change", syncStyle); });
+$("#credit").addEventListener("change", syncCredit);
+$("#doc").addEventListener("input", syncCount);
+function onSrcInput(e) {
+  var el = e.target.closest("[data-f]"); if (!el) return;
+  var id = +el.closest(".src").dataset.id, s = state.sources.find(function (x) { return x.id === id; });
+  if (s) s[el.dataset.f] = el.value;
+}
+$("#sources").addEventListener("input", onSrcInput);
+$("#sources").addEventListener("change", onSrcInput);
+$("#sources").addEventListener("click", function (e) {
+  var b = e.target.closest('[data-act="rm"]'); if (!b) return;
+  var id = +b.closest(".src").dataset.id;
+  state.sources = state.sources.filter(function (x) { return x.id !== id; });
+  if (!state.sources.length) state.sources.push(newSource());
+  renderSources();
+});
+$("#sources").addEventListener("click", async function (e) {
+  var b = e.target.closest('[data-act="fetch"]'); if (!b) return;
+  var box = b.closest(".src"), id = +box.dataset.id, st = box.querySelector(".fstat");
+  var s = state.sources.find(function (x) { return x.id === id; });
+  if (!s || !s.url.trim()) { st.textContent = "Paste a link first."; return; }
+  if (!apiBase()) { st.textContent = errCopy({ code: "not_configured" }); return; }
+  b.disabled = true; st.textContent = "Fetching...";
+  var set = function (field, val) { s[field] = val; var el = $("#s" + id + "-" + field); if (el) el.value = val; };
+  try {
+    var res;
+    try { res = await fetch(apiBase() + "/api/scrape", { method: "POST", headers: apiHeaders(), body: JSON.stringify({ url: s.url.trim() }) }); }
+    catch (x) { throw { code: "network" }; }
+    var j = {}; try { j = await res.json(); } catch (x) { /* no body */ }
+    if (!res.ok || !j.ok) throw { code: j.code || (res.status === 401 ? "unauthorized" : "server"), message: j.error };
+    if (!s.details.trim() && j.details) set("details", j.details);
+    set("text", j.text);
+    if (s.type === "auto" && j.type) set("type", j.type);
+    st.textContent = "Fetched " + j.words.toLocaleString() + " words. " + (j.note || "");
+  } catch (err) { st.textContent = errCopy(err); }
+  finally { b.disabled = false; }
+});
+$("#addSrc").addEventListener("click", function () {
+  if (state.sources.length >= 8) { toast("Eight sources is the limit per run."); return; }
+  var s = newSource(); state.sources.push(s); renderSources();
+  var el = $("#s" + s.id + "-url"); if (el) el.focus();
+});
+$("#loadEg").addEventListener("click", loadExample);
+$("#clearAll").addEventListener("click", clearAll);
+$("#go").addEventListener("click", run);
+$("#stop").addEventListener("click", function () { if (state.ctl) state.ctl.abort(); });
+$("#copy").addEventListener("click", copyResult);
+$("#dl").addEventListener("click", download);
+document.querySelectorAll(".tabs button").forEach(function (b) { b.addEventListener("click", function () { showTab(b.dataset.tab); }); });
+
+state.sources = EXAMPLE.sources.map(newSource);
+$("#m-title").value = EXAMPLE.meta.title; $("#m-name").value = EXAMPLE.meta.name; $("#m-instructor").value = EXAMPLE.meta.instructor;
+$("#m-course").value = EXAMPLE.meta.course; $("#m-date").value = EXAMPLE.meta.date; $("#m-school").value = EXAMPLE.meta.school;
+renderSources(); syncStyle(); syncCredit(); syncCount();
+try { $("#code").value = localStorage.getItem("citationizer-code") || ""; } catch (e) { /* storage blocked */ }
+$("#code").addEventListener("input", function () { try { localStorage.setItem("citationizer-code", $("#code").value.trim()); } catch (e) { /* storage blocked */ } });
+renderResult(EXAMPLE_RESULT);
+</script>
+</body>
+</html>
