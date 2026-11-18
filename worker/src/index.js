@@ -3,7 +3,9 @@
 //   POST /api/format  { prompt }  -> runs the AI and returns its answer as plain text
 //
 // The AI is Cloudflare Workers AI by default: the "AI" binding in wrangler.toml, no API key needed.
-// Settings (see README): ACCESS_CODE (secret, optional), ALLOWED_ORIGIN, AI_MODEL, AI_MAX_TOKENS.
+// Settings (see README): ALLOWED_ORIGIN, AI_MODEL, AI_MAX_TOKENS, USE_LIMIT, WINDOW_HOURS, FETCH_LIMIT.
+// Visitors get USE_LIMIT formats per IP per WINDOW_HOURS, counted by the Limiter Durable Object below.
+// ACCESS_CODE (secret, optional) is the owner's bypass: a request with the right code is never limited.
 // Optional: set ANTHROPIC_API_KEY (secret) and PROVIDER="anthropic" to use Claude instead (MODEL, MAX_TOKENS).
 
 import { extract } from "./extract.js";
@@ -23,16 +25,109 @@ export default {
     }
     if (request.method !== "POST") return json({ ok: false, code: "not_found", error: "Not found." }, 404, cors);
 
-    if (env.ACCESS_CODE && !same(request.headers.get("x-access-code") || "", String(env.ACCESS_CODE))) {
+    const owner = Boolean(env.ACCESS_CODE) && same(request.headers.get("x-access-code") || "", String(env.ACCESS_CODE));
+
+    // Without the Limiter binding there is no usage limit, so fall back to the old rule:
+    // a code is required whenever one is set.
+    if (!env.LIMITER && env.ACCESS_CODE && !owner) {
       return json({ ok: false, code: "unauthorized", error: "The access code is missing or wrong." }, 401, cors);
     }
 
     const path = new URL(request.url).pathname;
-    if (path === "/api/scrape") return scrape(request, cors);
-    if (path === "/api/format") return format(request, env, ctx, cors);
-    return json({ ok: false, code: "not_found", error: "Not found." }, 404, cors);
+    if (path !== "/api/scrape" && path !== "/api/format") {
+      return json({ ok: false, code: "not_found", error: "Not found." }, 404, cors);
+    }
+    const isFormat = path === "/api/format";
+
+    // Visitors are limited per IP. The owner (right code) never is.
+    const limit = isFormat ? num(env.USE_LIMIT, 3) : num(env.FETCH_LIMIT, 20);
+    const bucket = isFormat ? "format" : "fetch";
+    let gate = null;
+    if (env.LIMITER && !owner) {
+      try {
+        gate = await callLimiter(env, request, { op: "take", bucket, limit, windowMs: windowMs(env) });
+      } catch {
+        return json({ ok: false, code: "server", error: "The usage limiter is not available right now. Try again in a minute." }, 503, cors);
+      }
+      if (!gate.ok) {
+        return json({ ok: false, code: "limit_reached", error: limitMessage(isFormat, limit, gate.resetAt - Date.now(), env) }, 429, cors);
+      }
+    }
+
+    const res = isFormat ? await format(request, env, ctx, cors) : await scrape(request, cors);
+    if (!gate || !isFormat) return res;
+
+    // A format that failed on our side does not use up one of the visitor's turns.
+    if (res.status >= 400) {
+      try { await callLimiter(env, request, { op: "refund", bucket, limit, windowMs: windowMs(env) }); } catch { /* ignore */ }
+      return res;
+    }
+    const out = new Response(res.body, { status: res.status, headers: new Headers(res.headers) });
+    out.headers.set("x-uses-left", String(gate.left));
+    out.headers.set("x-uses-limit", String(limit));
+    return out;
   },
 };
+
+// One Durable Object per visitor (named by a hash of their IP) keeps the timestamps of their recent uses.
+export class Limiter {
+  constructor(state) {
+    this.state = state;
+  }
+
+  async fetch(request) {
+    const { op, bucket, limit, windowMs: win } = await request.json();
+    const now = Date.now();
+    const hits = ((await this.state.storage.get(bucket)) || []).filter((t) => now - t < win);
+    let ok = true;
+    if (op === "take") {
+      if (hits.length >= limit) ok = false;
+      else hits.push(now);
+    } else if (op === "refund") {
+      hits.pop();
+    }
+    if (hits.length) await this.state.storage.put(bucket, hits);
+    else await this.state.storage.delete(bucket);
+    return Response.json({ ok, left: Math.max(0, limit - hits.length), resetAt: hits.length ? hits[0] + win : null });
+  }
+}
+
+const num = (v, d) => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : d;
+};
+const windowMs = (env) => num(env.WINDOW_HOURS, 4) * 3600000;
+
+async function ipKey(request) {
+  const ip = request.headers.get("cf-connecting-ip") || "local";
+  try {
+    const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("citationizer:" + ip));
+    return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+  } catch {
+    return ip;
+  }
+}
+
+async function callLimiter(env, request, body) {
+  const stub = env.LIMITER.get(env.LIMITER.idFromName(await ipKey(request)));
+  const r = await stub.fetch("https://limiter/", { method: "POST", body: JSON.stringify(body) });
+  return r.json();
+}
+
+function waitText(ms) {
+  const m = Math.max(1, Math.ceil(ms / 60000));
+  if (m < 60) return m + (m === 1 ? " minute" : " minutes");
+  const h = Math.floor(m / 60), r = m % 60;
+  return h + (h === 1 ? " hour" : " hours") + (r ? " " + r + (r === 1 ? " minute" : " minutes") : "");
+}
+
+function limitMessage(isFormat, limit, ms, env) {
+  const hours = num(env.WINDOW_HOURS, 4);
+  const when = "in " + waitText(ms);
+  return isFormat
+    ? `You've used all ${limit} free formats for this ${hours}-hour window. You can format again ${when}.`
+    : `You've fetched ${limit} pages in this ${hours}-hour window. You can fetch again ${when}. You can still paste the text yourself.`;
+}
 
 function corsHeaders(request, env) {
   const allowed = String(env.ALLOWED_ORIGIN || "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -41,6 +136,7 @@ function corsHeaders(request, env) {
     "access-control-allow-methods": "POST, OPTIONS",
     "access-control-allow-headers": "content-type, x-access-code",
     "access-control-max-age": "86400",
+    "access-control-expose-headers": "x-uses-left, x-uses-limit",
     vary: "Origin",
   };
   if (!allowed.length) h["access-control-allow-origin"] = "*";
