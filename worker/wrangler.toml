@@ -1,0 +1,21 @@
+name = "citationizer-api"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+
+[vars]
+# Your GitHub Pages address. Several origins can be listed, separated by commas,
+# for example "https://citationizer.github.io,http://localhost:3000".
+ALLOWED_ORIGIN = "https://citationizer.github.io"
+# Free Cloudflare Workers AI model. Swap for another text model from the Workers AI catalog.
+AI_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+AI_MAX_TOKENS = "8000"
+
+# Gives the Worker access to Cloudflare Workers AI. No API key needed.
+[ai]
+binding = "AI"
+
+# Secrets are set with wrangler, not here:
+#   npx wrangler secret put ACCESS_CODE        (optional, recommended)
+#
+# To use Claude instead of Workers AI, set PROVIDER = "anthropic" above and run:
+#   npx wrangler secret put ANTHROPIC_API_KEY
