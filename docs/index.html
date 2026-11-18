@@ -255,7 +255,7 @@ Starting a garden is also cheaper than most people expect. A typical plot needs 
       </section>
 
       <section>
-        <details class="adv"><summary>Server access code</summary><div class="f"><label for="code">Only needed if your server sets one</label><input type="text" id="code" autocomplete="off" spellcheck="false"></div></details>
+        <details class="adv"><summary>Owner access code</summary><div class="f"><label for="code">Skips the free-use limit. Visitors can leave this empty.</label><input type="text" id="code" autocomplete="off" spellcheck="false"></div></details>
         <button type="button" class="go" id="go">Format my paper</button>
         <div class="row" style="margin-top:10px" id="stopRow" hidden><button type="button" class="btn" id="stop">Stop</button></div>
         <div class="status" id="status" role="status" aria-live="polite"></div>
@@ -619,7 +619,8 @@ function normalize(data, f) {
 function errCopy(e) {
   switch (e && e.code) {
     case "not_configured": return "The server address is not set. Add it to docs/config.js (see the README).";
-    case "unauthorized": return "The access code is missing or wrong. Enter it under Server access code.";
+    case "unauthorized": return "The access code is missing or wrong. Enter it under Owner access code.";
+    case "limit_reached": return (e && e.message) || "You have used your free formats for now. Try again later.";
     case "rate_limited": return (e && e.message) || "Too many requests right now. Wait a minute, then try again.";
     case "too_large": return "That is too much to format at once. Try the paper in two parts.";
     case "invalid_json": case "bad_shape": return "The result came back incomplete, usually because the paper is long. Try again, or format it in sections.";
@@ -638,6 +639,7 @@ async function streamFormat(prompt, signal, onText) {
     var j = {}; try { j = await res.json(); } catch (e) { /* no body */ }
     throw { code: j.code || (res.status === 401 ? "unauthorized" : res.status === 429 ? "rate_limited" : res.status === 413 ? "too_large" : "server"), message: j.error };
   }
+  state.left = res.headers.get("x-uses-left"); state.limit = res.headers.get("x-uses-limit");
   var reader = res.body.getReader(), dec = new TextDecoder(), text = "";
   try { for (;;) { var c = await reader.read(); if (c.done) break; text += dec.decode(c.value, { stream: true }); onText(text); } }
   catch (e) { throw { code: e && e.name === "AbortError" ? "cancelled" : "network" }; }
@@ -657,7 +659,7 @@ async function run() {
     var raw = await streamFormat(buildPrompt(f), state.ctl.signal, function (t) { setStatus("Formatting... " + t.length.toLocaleString() + " characters written", "busy"); });
     var r = normalize(parseJsonLoose(raw), f);
     renderResult(r); showTab("paper");
-    setStatus("Done. " + r.added.length + " credit" + (r.added.length === 1 ? "" : "s") + " added" + (r.warnings.length ? ", " + r.warnings.length + " to check." : "."), "ok");
+    setStatus("Done. " + r.added.length + " credit" + (r.added.length === 1 ? "" : "s") + " added" + (r.warnings.length ? ", " + r.warnings.length + " to check." : ".") + (state.left != null ? " " + state.left + " of " + state.limit + " free formats left." : ""), "ok");
     if (window.matchMedia("(max-width: 979px)").matches) $("#out").scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
   } catch (e) {
     if (e && e.code === "cancelled") setStatus("Stopped.");
