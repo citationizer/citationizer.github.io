@@ -6,7 +6,7 @@
   "description": "Format a paper and its citations in MLA or APA, with a web page scraper and a Claude-powered formatter.",
   "scripts": {
     "scrape": "node scripts/scrape.mjs",
-    "test": "node tests/extract.test.mjs",
+    "test": "node tests/extract.test.mjs && node tests/worker.test.mjs && node tests/limit.test.mjs",
     "dev:api": "cd worker && npx wrangler dev",
     "deploy:api": "cd worker && npx wrangler deploy"
   },
