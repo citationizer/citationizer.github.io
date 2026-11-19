@@ -135,10 +135,6 @@ textarea { resize: vertical; line-height: 1.5; }
 .urlrow .btn { flex: none; }
 .fstat { margin-top: 6px; font-size: 12px; color: var(--muted); }
 .fstat:empty { display: none; }
-.adv { margin-bottom: 14px; font-size: 13px; color: var(--muted); }
-.adv summary { width: fit-content; cursor: pointer; }
-.adv summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-.adv .f { margin-top: 10px; }
 
 /* primary button */
 .go { width: 100%; padding: 14px 20px; border: 0; border-radius: 2px; background: var(--btn-green); color: var(--green-fg); font: 600 16px var(--font-body); cursor: pointer; }
@@ -255,10 +251,10 @@ Starting a garden is also cheaper than most people expect. A typical plot needs 
       </section>
 
       <section>
-        <details class="adv"><summary>Owner access code</summary><div class="f"><label for="code">Skips the free-use limit. Visitors can leave this empty.</label><input type="text" id="code" autocomplete="off" spellcheck="false"></div></details>
         <button type="button" class="go" id="go">Format my paper</button>
         <div class="row" style="margin-top:10px" id="stopRow" hidden><button type="button" class="btn" id="stop">Stop</button></div>
         <div class="status" id="status" role="status" aria-live="polite"></div>
+        <div class="row" id="altRow" hidden><button type="button" class="btn" id="altBtn">Use the free format instead</button></div>
       </section>
     </div>
 
@@ -286,6 +282,7 @@ Starting a garden is also cheaper than most people expect. A typical plot needs 
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://js.puter.com/v2/"></script>
 <script src="config.js"></script>
 <script>
 //#pure-start
@@ -503,7 +500,7 @@ function parseJsonLoose(text) {
 
 /* ---------------- interface ---------------- */
 var $ = function (s, r) { return (r || document).querySelector(s); };
-var state = { sources: [], seq: 0, result: null, ctl: null, running: false, blocked: false };
+var state = { sources: [], seq: 0, result: null, ctl: null, running: false, blocked: false, mode: "free", left: null, limit: null, reset: null };
 
 function toast(msg) {
   var t = $("#toast"); t.textContent = msg; t.hidden = false;
@@ -514,11 +511,7 @@ function setStatus(msg, kind) {
   el.innerHTML = (kind === "busy" ? '<span class="spin" aria-hidden="true"></span>' : "") + esc(msg);
 }
 function apiBase() { var c = window.CITATIONIZER || {}; return String(c.api || "").replace(/\/+$/, ""); }
-function apiHeaders() {
-  var h = { "content-type": "application/json" }, code = $("#code").value.trim();
-  if (code) h["x-access-code"] = code;
-  return h;
-}
+function apiHeaders() { return { "content-type": "application/json" }; }
 
 function srcHtml(s, i) {
   var opts = SOURCE_TYPES.map(function (o) { return '<option value="' + o[0] + '"' + (s.type === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("");
@@ -619,8 +612,9 @@ function normalize(data, f) {
 function errCopy(e) {
   switch (e && e.code) {
     case "not_configured": return "The server address is not set. Add it to docs/config.js (see the README).";
-    case "unauthorized": return "The access code is missing or wrong. Enter it under Owner access code.";
-    case "limit_reached": return (e && e.message) || "You have used your free formats for now. Try again later.";
+    case "limit_reached": return (e && e.message) || "You have used your free allowance for now. Try again later.";
+    case "puter_missing": return "Puter did not load. Check your connection and try again.";
+    case "puter_popup_blocked": return "Your browser blocked the Puter sign-in window. Allow pop-ups for this site, then press Format again.";
     case "rate_limited": return (e && e.message) || "Too many requests right now. Wait a minute, then try again.";
     case "too_large": return "That is too much to format at once. Try the paper in two parts.";
     case "invalid_json": case "bad_shape": return "The result came back incomplete, usually because the paper is long. Try again, or format it in sections.";
@@ -637,13 +631,84 @@ async function streamFormat(prompt, signal, onText) {
   catch (e) { throw { code: e && e.name === "AbortError" ? "cancelled" : "network" }; }
   if (!res.ok) {
     var j = {}; try { j = await res.json(); } catch (e) { /* no body */ }
-    throw { code: j.code || (res.status === 401 ? "unauthorized" : res.status === 429 ? "rate_limited" : res.status === 413 ? "too_large" : "server"), message: j.error };
+    throw { code: j.code || (res.status === 429 ? "rate_limited" : res.status === 413 ? "too_large" : "server"), message: j.error, resetAt: j.resetAt };
   }
-  state.left = res.headers.get("x-uses-left"); state.limit = res.headers.get("x-uses-limit");
+  state.left = res.headers.get("x-uses-left"); state.limit = res.headers.get("x-uses-limit"); state.reset = res.headers.get("x-uses-reset");
   var reader = res.body.getReader(), dec = new TextDecoder(), text = "";
   try { for (;;) { var c = await reader.read(); if (c.done) break; text += dec.decode(c.value, { stream: true }); onText(text); } }
   catch (e) { throw { code: e && e.name === "AbortError" ? "cancelled" : "network" }; }
   return text;
+}
+
+/* ---- After the free format, visitors continue with their own Puter account (Puter.js, user pays) ---- */
+var PUTER_KEY = "citationizer-puter-until";
+function puterModel() { var c = window.CITATIONIZER || {}; return c.puterModel || "claude-sonnet-4-6"; }
+function loadMode() {
+  try { if (Number(localStorage.getItem(PUTER_KEY)) > Date.now()) state.mode = "puter"; } catch (e) { /* storage blocked */ }
+}
+function saveMode(on, until) {
+  try { if (on) localStorage.setItem(PUTER_KEY, String(until > Date.now() ? until : Date.now() + 24 * 3600000)); else localStorage.removeItem(PUTER_KEY); } catch (e) { /* storage blocked */ }
+}
+function syncAlt() {
+  var btn = $("#altBtn"), row = $("#altRow");
+  btn.textContent = "Use the free format instead";
+  row.hidden = state.mode !== "puter";
+}
+function leftText() {
+  if (state.left == null) return "";
+  return state.left === "0" ? " That was your last free format for now. Next ones use your Puter account." : " " + state.left + " of " + state.limit + " free formats left.";
+}
+function puterErr(e) {
+  if (e && e.name === "AbortError") return { code: "cancelled" };
+  var code = e && (e.code || (e.error && e.error.code));
+  return { code: "puter_" + (code || "error"), message: e && (e.message || (e.error && e.error.message) || e.msg) };
+}
+async function puterFormat(prompt, signal, onText) {
+  if (!window.puter) throw { code: "puter_missing" };
+  try {
+    // Sign-in opens a pop-up, so this must run straight from the button click, before anything slow.
+    var signed = window.puter.auth.isSignedIn();
+    if (signed && typeof signed.then === "function") signed = await signed;
+    if (!signed) await window.puter.auth.signIn();
+    var stream = await window.puter.ai.chat(prompt, { model: puterModel(), stream: true, max_tokens: 8000, signal: signal });
+    var text = "";
+    for await (var part of stream) {
+      if (signal.aborted) throw { code: "cancelled" };
+      if (part && part.type === "error") throw { code: "puter_error", message: part.message };
+      if (part && part.type === "text" && part.text) { text += part.text; onText(text); }
+    }
+    return text;
+  } catch (e) {
+    if (e && (e.code === "cancelled" || String(e.code).indexOf("puter_") === 0)) throw e;
+    throw puterErr(e);
+  }
+}
+
+// Errors that mean the free server cannot do this right now: go to the visitor's own Puter account instead.
+function canFallBack(e) {
+  return !!e && ["limit_reached", "rate_limited", "server", "network", "forbidden", "empty", "invalid_json", "bad_shape"].indexOf(e.code) >= 0;
+}
+async function attempt(via, prompt, f, signal, onText) {
+  var raw = via === "puter" ? await puterFormat(prompt, signal, onText) : await streamFormat(prompt, signal, onText);
+  return normalize(parseJsonLoose(raw), f);
+}
+// On page load, ask the server whether a free format is left, so a click can go straight to Puter sign-in.
+async function checkFree() {
+  if (state.mode === "puter") return;
+  var why = "";
+  if (!apiBase()) why = "No free server is set up.";
+  else {
+    try {
+      var res = await fetch(apiBase() + "/api/status", { method: "POST", headers: apiHeaders(), body: "{}" });
+      var j = await res.json();
+      if (!res.ok || !j.ok) throw new Error("status");
+      if (j.left > 0) return;
+      saveMode(true, Number(j.resetAt));
+      why = "Your free format for now is used.";
+    } catch (e) { why = "The free server is not available."; }
+  }
+  state.mode = "puter"; syncAlt();
+  if (!state.running) setStatus(why + " Formatting will use your Puter account.");
 }
 
 async function run() {
@@ -651,15 +716,31 @@ async function run() {
   var f = readForm();
   if (!f.doc.trim()) { setStatus("Paste your paper first.", "err"); $("#doc").focus(); return; }
   if (f.credit && !f.sources.length) { setStatus("Add at least one source so there is something to credit.", "err"); return; }
-  if (!apiBase()) { setStatus(errCopy({ code: "not_configured" }), "err"); return; }
-  state.running = true; state.ctl = new AbortController();
+  var usePuter = state.mode === "puter" || !apiBase();
+  state.running = true; state.ctl = new AbortController(); state.left = null;
   $("#go").disabled = true; $("#stopRow").hidden = false;
-  setStatus("Reading your paper and sources...", "busy");
+  setStatus(usePuter ? "Opening your Puter account..." : "Reading your paper and sources...", "busy");
+  var via = usePuter ? "puter" : "free";
   try {
-    var raw = await streamFormat(buildPrompt(f), state.ctl.signal, function (t) { setStatus("Formatting... " + t.length.toLocaleString() + " characters written", "busy"); });
-    var r = normalize(parseJsonLoose(raw), f);
+    var prompt = buildPrompt(f);
+    var onText = function (t) { setStatus("Formatting... " + t.length.toLocaleString() + " characters written", "busy"); };
+    var r;
+    try {
+      r = await attempt(via, prompt, f, state.ctl.signal, onText);
+    } catch (e1) {
+      if (via !== "free" || !canFallBack(e1)) throw e1;
+      // The free server is used up or failing: go straight to the visitor's own Puter account.
+      via = "puter"; state.mode = "puter";
+      if (e1.code === "limit_reached") saveMode(true, Number(e1.resetAt));
+      else if (e1.code === "rate_limited") { var midnight = new Date(); midnight.setUTCHours(24, 0, 0, 0); saveMode(true, midnight.getTime()); }
+      syncAlt();
+      setStatus("The free server can't format this right now. Opening your Puter account...", "busy");
+      r = await attempt("puter", prompt, f, state.ctl.signal, onText);
+    }
     renderResult(r); showTab("paper");
-    setStatus("Done. " + r.added.length + " credit" + (r.added.length === 1 ? "" : "s") + " added" + (r.warnings.length ? ", " + r.warnings.length + " to check." : ".") + (state.left != null ? " " + state.left + " of " + state.limit + " free formats left." : ""), "ok");
+    setStatus("Done. " + r.added.length + " credit" + (r.added.length === 1 ? "" : "s") + " added" + (r.warnings.length ? ", " + r.warnings.length + " to check." : ".") + (via === "puter" ? " Formatted with your Puter account." : leftText()), "ok");
+    if (via === "free" && state.left === "0") { state.mode = "puter"; saveMode(true, Number(state.reset)); }
+    syncAlt();
     if (window.matchMedia("(max-width: 979px)").matches) $("#out").scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
   } catch (e) {
     if (e && e.code === "cancelled") setStatus("Stopped.");
@@ -747,6 +828,9 @@ $("#addSrc").addEventListener("click", function () {
 $("#loadEg").addEventListener("click", loadExample);
 $("#clearAll").addEventListener("click", clearAll);
 $("#go").addEventListener("click", run);
+$("#altBtn").addEventListener("click", function () {
+  state.mode = "free"; saveMode(false); syncAlt(); setStatus("The next format will use the free server.");
+});
 $("#stop").addEventListener("click", function () { if (state.ctl) state.ctl.abort(); });
 $("#copy").addEventListener("click", copyResult);
 $("#dl").addEventListener("click", download);
@@ -756,8 +840,9 @@ state.sources = EXAMPLE.sources.map(newSource);
 $("#m-title").value = EXAMPLE.meta.title; $("#m-name").value = EXAMPLE.meta.name; $("#m-instructor").value = EXAMPLE.meta.instructor;
 $("#m-course").value = EXAMPLE.meta.course; $("#m-date").value = EXAMPLE.meta.date; $("#m-school").value = EXAMPLE.meta.school;
 renderSources(); syncStyle(); syncCredit(); syncCount();
-try { $("#code").value = localStorage.getItem("citationizer-code") || ""; } catch (e) { /* storage blocked */ }
-$("#code").addEventListener("input", function () { try { localStorage.setItem("citationizer-code", $("#code").value.trim()); } catch (e) { /* storage blocked */ } });
+loadMode(); syncAlt();
+if (state.mode === "puter") setStatus("Your free format is used for now. Formatting will use your Puter account.");
+else checkFree();
 renderResult(EXAMPLE_RESULT);
 </script>
 </body>
